@@ -6,6 +6,10 @@ on:
     paths:
       - 'template/**'
 
+env:
+  SHARED_REPO_PAT: ${{ secrets.SHARED_REPO_PAT }}
+  SHARED_REPO_NAME: "${{ github.repository_owner }}/SRR-shared-resources"
+
 jobs:
   trigger-dispatch:
     runs-on: ubuntu-latest
@@ -16,31 +20,31 @@ jobs:
         with:
           fetch-depth: 2  # Need last 2 commits for diff
 
+      - name: Fetch consumer config from shared repo
+        run: |
+            curl -s -H "Authorization: token ${{ env.SHARED_REPO_PAT }}" \
+            -H "Accept: application/vnd.github.v3.raw" \
+            "https://api.github.com/repos/${{ env.SHARED_REPO_NAME }}/contents/consumer-config.yml" \
+            -o consumer-config.yml
+
       - name: Determine changed folders
         id: changed-folders
         run: |
-          # Get list of changed files in last commit
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
           CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD)
-
-          # Map consumer paths to shared folder names
+      
           FOLDERS=""
-          if echo "$CHANGED_FILES" | grep -q "^template/jsnapy/"; then
-            FOLDERS="$FOLDERS jsnapy"
-          fi
-          if echo "$CHANGED_FILES" | grep -q "^template/jinja2/"; then
-            FOLDERS="$FOLDERS jinja2"
-          fi
-          if echo "$CHANGED_FILES" | grep -q "^template/ttp/"; then
-            FOLDERS="$FOLDERS ttp"
-          fi
-          if echo "$CHANGED_FILES" | grep -q "^template/textfsm/"; then
-            FOLDERS="$FOLDERS textfsm"
-          fi
-          if echo "$CHANGED_FILES" | grep -q "^template/tableview/"; then
-            FOLDERS="$FOLDERS tableview"
-          fi
-
-          echo "folders=$FOLDERS" >> $GITHUB_OUTPUT
+          while IFS= read -r line; do
+            SHARED_FOLDER=$(echo "$line" | cut -d' ' -f1)
+            LOCAL_PATH=$(echo "$line" | cut -d' ' -f2)
+      
+            if echo "$CHANGED_FILES" | grep -q "^${LOCAL_PATH}/"; then
+              FOLDERS="$FOLDERS $SHARED_FOLDER"
+            fi
+          done < <(yq e ".\"${REPO_NAME}\".folders | to_entries | .[] | .key + \" \" + .value" consumer-config.yml)
+      
+          FOLDERS=$(echo "$FOLDERS" | xargs)  # trim whitespace
+          echo "folders=$FOLDERS" >> "$GITHUB_OUTPUT"
           echo "Changed folders: $FOLDERS"
 
       - name: Send repository_dispatch for each changed folder
