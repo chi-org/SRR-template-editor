@@ -22,10 +22,21 @@ jobs:
 
       - name: Fetch consumer config from shared repo
         run: |
-            curl -s -H "Authorization: token ${{ env.SHARED_REPO_PAT }}" \
+           HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: token ${{ env.SHARED_REPO_PAT }}" \
             -H "Accept: application/vnd.github.v3.raw" \
-            "https://api.github.com/repos/${{ env.SHARED_REPO_NAME }}/contents/consumer-config.yml" \
-            -o consumer-config.yml
+            "https://api.github.com/repos/${{ env.SHARED_REPO_NAME }}/contents/consumer-config.yml")
+      
+           HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -1)
+           BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
+      
+           if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+             echo "::error::❌ Failed to fetch consumer-config.yml (HTTP $HTTP_CODE): $BODY"
+             exit 1
+           else
+             echo "$BODY" > consumer-config.yml
+             echo "✅ Fetched consumer-config.yml"
+           fi
 
       - name: Determine changed folders
         id: changed-folders
