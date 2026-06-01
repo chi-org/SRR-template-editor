@@ -22,23 +22,34 @@ jobs:
 
       - name: Fetch consumer config from shared repo
         run: |
-           HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -H "Authorization: token ${{ env.SHARED_REPO_PAT }}" \
-            -H "Accept: application/vnd.github.v3.raw" \
-            "https://api.github.com/repos/${{ env.SHARED_REPO_NAME }}/contents/.github/consumer-config.yml") 
-      
-           HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -1)
-           BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
-      
-           if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
-             echo "::error::❌ Failed to fetch consumer-config.yml (HTTP $HTTP_CODE): $BODY"
-             exit 1
-           else
-             echo "$BODY" > consumer-config.yml
-             echo "✅ Fetched consumer-config.yml"
-           fi
+            HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
+              -H "Authorization: token ${{ env.SHARED_REPO_PAT }}" \
+              -H "Accept: application/vnd.github.v3.raw" \
+              "https://api.github.com/repos/${{ env.SHARED_REPO_NAME }}/contents/.github/consumer-config.yml") 
+        
+            HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -1)
+            BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
+        
+            if [[ "$HTTP_CODE" -lt 200 || "$HTTP_CODE" -ge 300 ]]; then
+              echo "::error::❌ Failed to fetch consumer-config.yml (HTTP $HTTP_CODE): $BODY"
+              exit 1
+            else
+              echo "$BODY" > consumer-config.yml
+              echo "✅ Fetched consumer-config.yml"
 
-            cat consumer-config.yml
+              REPO_NAME="${GITHUB_REPOSITORY#*/}" 
+  
+              FOLDERS=$(yq e ".[\"$REPO_NAME\"].folders" consumer-config.yml)
+  
+              if [[ "$FOLDERS" == "null" || -z "$FOLDERS" ]]; then
+                echo "::error::❌ Repo '$REPO_NAME' not found in consumer-config.yml"
+                exit 1
+              fi
+  
+              echo "📂 Folders to sync for $REPO_NAME:"
+              echo "$FOLDERS"
+            fi
+
 
 
       - name: Determine changed folders
